@@ -67,8 +67,10 @@ def load_dataset(folder_path, dataset_size=None):
         ds = ds.rename_column(ds.column_names[0], "text")
         data.append(ds)
     if dataset_size is None:
-        return concatenate_datasets(data, axis=0).shuffle()
-    return concatenate_datasets(data, axis=0).shuffle().select(range(dataset_size))
+        return concatenate_datasets(data, axis=0).shuffle(seed=42)
+    return (
+        concatenate_datasets(data, axis=0).shuffle(seed=42).select(range(dataset_size))
+    )
 
 
 ds = load_dataset(args["dataset_paths"], args["dataset_size"])
