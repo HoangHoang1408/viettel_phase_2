@@ -1,137 +1,107 @@
-import random
-from pprint import pprint
 from time import sleep
 
 import gradio as gr
-import torch
-from peft import PeftConfig, PeftModel
-from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    BitsAndBytesConfig,
-    StoppingCriteria,
-    StoppingCriteriaList,
-    pipeline,
+from inferencer import Inferencer, PromptType
+from memory_constructor import (
+    BaseMemoryConstrucor,
+    DynamicWindowLengthMemoryConstructor,
+    FixedWindowLengthMemoryConstructor,
+    FullMemoryConstructor,
 )
-
-default_gen_config = {
-    "temperature": 0.3,
-    "top_p": 0.5,
-    "top_k": 0,
-    "max_new_tokens": 512,
-    "repetition_penalty": 1.1,
-}
+from retriever import Retriever
 
 
 class ChatBot:
     def __init__(
         self,
-        apdapter_path,
-        gen_config=default_gen_config,
+        inferencer: Inferencer,
+        retriever: Retriever,
+        memory: BaseMemoryConstrucor = FixedWindowLengthMemoryConstructor(
+            system_message="Đoạn hội thoại giữa con người và AI.\n",
+            human_symbol="[|Con người|]",
+            ai_symbol="[|AI|]",
+        ),
     ):
         self.sleep_time = 0.02
-        self.gen_config = gen_config
-        self._set_stopping_criteria()
-        self._load_llm(apdapter_path)
-        self.set_gen_config(self.gen_config)
-        self.system_message = "Đoạn hội thoại giữa con người và AI"
-        self.history = []  # [(human_input, bot_response)]
-        self.human_symbol = "[|Con người|]"
-        self.ai_symbol = "[|AI|]"
+        self.inferencer = inferencer
+        self.memory = memory
+        self.retriever = retriever
 
-    def _load_llm(self, adapter_path):
-        peft_config = PeftConfig.from_pretrained(adapter_path)
-        model = AutoModelForCausalLM.from_pretrained(
-            peft_config.base_model_name_or_path,
-            quantization_config=BitsAndBytesConfig(
-                load_in_4bit=True,
-                device_map="auto",
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_compute_dtype=torch.bfloat16,
-            ),
-            trust_remote_code=True,
-        )
-        self.model = PeftModel.from_pretrained(model, adapter_path)
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            peft_config.base_model_name_or_path
-        )
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.tokenizer.model_max_length = 512
-
-    def _set_stopping_criteria(self):
-        stop_seq_list = [self.human_symbol, self.tokenizer.eos_token]
-        stop_token_ids_list = [
-            torch.tensor(
-                self.tokenizer.convert_tokens_to_ids(self.tokenizer.tokenize(x))
-            )
-            .long()
-            .to("cuda")
-            for x in stop_seq_list
-        ]
-
-        class StopOnTokens(StoppingCriteria):
-            def __call__(
-                self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
-            ) -> bool:
-                for stop_ids in stop_token_ids_list:
-                    if torch.eq(input_ids[0][-len(stop_ids) :], stop_ids).all():
-                        return True
-                return False
-
-        self.stopping_criteria = StoppingCriteriaList([StopOnTokens()])
-
-    def _construct_input_conversation(self, human_input):
-        conversation = self.get_conversation_sofar()
+    def remove_suffix(self, text):
         return (
-            conversation + f"{self.human_symbol} {human_input}\n" + f"{self.ai_symbol} "
+            text.removesuffix(self.memory.human_symbol)
+            .split(self.memory.ai_symbol)[-1]
+            .strip()
         )
 
-    def _clear_history(self):
-        self.history = []
-
-    def set_gen_config(self, gen_config):
-        self.llm = pipeline(
-            model=self.model,
-            tokenizer=self.tokenizer,
-            stopping_criteria=self.stopping_criteria,
-            return_full_text=True,
-            task="text-generation",
-            **gen_config,
-        )
-
-    def get_conversation_sofar(self):
-        conversation = self.system_message + "\n"
-        for human_input, ai_response in self.history:
-            conversation += (
-                f"{self.human_symbol} {human_input}\n"
-                + f"{self.ai_symbol} {ai_response}\n"
-            )
-        return conversation
-
-    def generate(self, human_input):
-        prompt = self._construct_input_conversation(human_input)
-        gen_conversation = self.llm(prompt)[0]["generated_text"]
-        gen_conversation = gen_conversation.removesuffix(self.human_symbol)
-        ai_response = gen_conversation.split(self.ai_symbol)[-1].strip()
-        self.history.append((human_input, ai_response))
+    def free_style_answer(self, human_input):
+        prompt = self.memory.construct_input_memory(human_input)
+        gen_conversation = self.inferencer.generate(prompt)
+        ai_response = self.remove_suffix(gen_conversation)
+        self.memory.add_to_memory(human_input, ai_response)
         return ai_response
 
-    def render(self):
-        def chat(human_input, history=self.history):
+    def answer(self, human_input, retrieve=True):
+        if retrieve:
+            if len(self.memory.memory) > 0:
+                full_conversation = self.memory.get_used_memory()
+                con_sum_prompt = self.inferencer.format_prompt(
+                    PromptType.CONVERSATION_SUMMARIZATION,
+                    conversation=full_conversation,
+                )
+                self.inferencer.summarize_mode(True)
+                summaried_conversation = self.inferencer.generate(con_sum_prompt)
+                self.inferencer.summarize_mode(False)
+                retrieve_input = summaried_conversation + "\nCâu hỏi: " + human_input
+            else:
+                retrieve_input = human_input
+            
+            print(retrieve_input)
+            retrieved_contexts = self.retriever.retrieve(
+                retrieve_input, only_semantic=True
+            )
+            context_prompt = self.inferencer.format_prompt(
+                PromptType.LAW_WITH_CONTEXT,
+                question=human_input,
+                contexts="\n".join(retrieved_contexts),
+            )
+            law_answer = self.inferencer.generate(context_prompt)
+            print(law_answer)
+            law_answer = self.remove_suffix(law_answer)
+            self.memory.add_to_memory(human_input, law_answer)
+            return law_answer
+        else:
+            return self.free_style_answer(human_input)
+
+    def render(self, share=True):
+        def chat(human_input, history=self.memory.memory):
             yield "", history + [(human_input, None)]
             response = ""
-            for letter in self.generate(human_input):
+            for letter in self.answer(human_input):
                 sleep(self.sleep_time)
                 response += letter
                 yield "", history + [(human_input, response)]
-        
+
+        def clear_conversation():
+            self.memory.clear_memory()
+            return self.memory.memory
+
+        def pop_message():
+            self.memory.pop_from_memory()
+            return self.memory.memory
+
         with gr.Blocks() as demo:
             gr.Markdown("## Chat bot demo")
             with gr.Tabs():
                 with gr.TabItem("Chat"):
                     chatbot = gr.Chatbot(height=600)
                     message = gr.Textbox(placeholder="Type your message here...")
+                    with gr.Row():
+                        # buttons with green background
+                        clear_btn = gr.Button("Clear chat history", type="secondary")
+                        pop_btn = gr.Button("Pop last message", type="secondary")
+                    clear_btn.click(clear_conversation, [], [chatbot])
+                    pop_btn.click(pop_message, [], [chatbot])
                     message.submit(chat, [message, chatbot], [message, chatbot])
                 with gr.TabItem("Settings"):
                     gr.Slider(minimum=0, maximum=1, step=0.01, label="Confidence")
@@ -139,4 +109,4 @@ class ChatBot:
                         setting_btn = gr.Button("Save settings")
                         reset_setting_btn = gr.Button("Reset settings")
 
-        demo.queue().launch(share=True)
+        demo.queue().launch(share=share)

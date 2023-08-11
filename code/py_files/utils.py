@@ -41,9 +41,9 @@ import pandas as pd
 def log_prompt(model_name, csv_path_to_save="prompt_log.csv"):
     def decorator(func):
         def wrapper(*args, **kwargs):
+            cur_time = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
             start = perf_counter()
             prompt = func(*args, **kwargs)
-            cur_time = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
             total_time = perf_counter() - start
             try:
                 df = pd.read_csv(csv_path_to_save)
