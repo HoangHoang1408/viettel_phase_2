@@ -44,18 +44,19 @@ class ChatBot:
     def answer(self, human_input, retrieve=True):
         if retrieve:
             if len(self.memory.memory) > 0:
-                full_conversation = self.memory.get_used_memory()
+                full_conversation = (
+                    self.memory.get_used_memory() + f"\n[|Con người|] {human_input}"
+                )
                 con_sum_prompt = self.inferencer.format_prompt(
                     PromptType.CONVERSATION_SUMMARIZATION,
                     conversation=full_conversation,
                 )
                 self.inferencer.summarize_mode(True)
-                summaried_conversation = self.inferencer.generate(con_sum_prompt)
+                retrieve_input = self.inferencer.generate(con_sum_prompt)
                 self.inferencer.summarize_mode(False)
-                retrieve_input = summaried_conversation + "\nCâu hỏi: " + human_input
             else:
                 retrieve_input = human_input
-            
+
             print(retrieve_input)
             retrieved_contexts = self.retriever.retrieve(
                 retrieve_input, only_semantic=True
@@ -66,6 +67,7 @@ class ChatBot:
                 contexts="\n".join(retrieved_contexts),
             )
             law_answer = self.inferencer.generate(context_prompt)
+            
             print(law_answer)
             law_answer = self.remove_suffix(law_answer)
             self.memory.add_to_memory(human_input, law_answer)
