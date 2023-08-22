@@ -67,7 +67,7 @@ class ChatBot:
                 contexts="\n".join(retrieved_contexts),
             )
             law_answer = self.inferencer.generate(context_prompt)
-            
+
             print(law_answer)
             law_answer = self.remove_suffix(law_answer)
             self.memory.add_to_memory(human_input, law_answer)
@@ -112,3 +112,5 @@ class ChatBot:
                         reset_setting_btn = gr.Button("Reset settings")
 
         demo.queue().launch(share=share)
+
+str().removesuffix()

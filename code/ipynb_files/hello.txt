@@ -1,0 +1,6 @@
+docker exec -it datht17 /bin/bash
+cd home/datht17
+export CUDA_VISIBLE_DEVICES=X
+jupyter notebook --ip 0.0.0.0 --port 8888 --allow-root
+138.192:9005 
+138.189:9005
