@@ -28,6 +28,20 @@ ARC_SIZE = 100
 MMLU_PATH = "/content/mmlu_validation.json"
 MMLU_SIZE = 100
 INFERENCE_BATCH_SIZE = 4
+PROMPT = """Cuộc trò chuyện giữa con người và trợ lý AI.
+[|Con người|] Lựa chọn một đáp án cho câu hỏi sau đây:
+{question}
+{choices}
+Đáp án:
+[|AI|] """
+
+GEN_CONFIG = {
+    "temperature": 0.3,
+    "top_p": 0.5,
+    "top_k": 0,
+    "max_new_tokens": 32,
+    "repetition_penalty": 1.1,
+}
 
 
 # prompt templates
@@ -214,19 +228,11 @@ class Inferencer:
         return text_output
 
 
-prompt = """Cuộc trò chuyện giữa con người và trợ lý AI.
-[|Con người|] Lựa chọn một đáp án cho câu hỏi sau đây:
-{question}
-{choices}
-Đáp án:
-[|AI|] """
-
-
 def load_arc(path, size):
     def mapper(x):
         choices = [x[t] for t in ["option_a", "option_b", "option_c", "option_d"]]
         return {
-            "input": prompt.format(
+            "input": PROMPT.format(
                 question=x["instruction"],
                 choices="\n".join(
                     f"{i}. {c}" for i, c in zip(["A", "B", "C", "D"], choices)
@@ -249,7 +255,7 @@ def load_mmlu(path, size):
     def mapper(x):
         choices = [x[t] for t in ["option_a", "option_b", "option_c", "option_d"]]
         return {
-            "input": prompt.format(
+            "input": PROMPT.format(
                 question=x["instruction"],
                 choices="\n".join(
                     f"{i}. {c}" for i, c in zip(["A", "B", "C", "D"], choices)
@@ -320,15 +326,7 @@ inferencer = Inferencer(
     adapter_path=ADAPTER_PATH,
     base_model_path=BASE_MODEL_PATH,
 )
-inferencer.set_gen_config(
-    {
-        "temperature": 0.3,
-        "top_p": 0.5,
-        "top_k": 0,
-        "max_new_tokens": 32,
-        "repetition_penalty": 1.1,
-    }
-)
+inferencer.set_gen_config(GEN_CONFIG)
 
 
 def generate_func(prompts):
@@ -339,6 +337,6 @@ def generate_func(prompts):
 
 result = report(generate_func)
 
-# wirte json
-with open(f"result_{ADAPTER_PATH}.json", "w") as f:
+# check if file exist if not create and then write json
+with open(f"result_{ADAPTER_PATH.split('/')[-1]}.json", "w") as f:
     json.dump(result, f)
