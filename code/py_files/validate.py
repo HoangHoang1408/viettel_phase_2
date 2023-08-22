@@ -18,12 +18,14 @@ from transformers import (
 
 BASE_MODEL_PATH = "bigscience/bloom-3b"
 ADAPTER_PATH = "hoang14/general_chatbot_05_08_23"
+
 ARC_PATH = "/content/arc_validation.json"
 ARC_SIZE = 100
 MMLU_PATH = "/content/mmlu_validation.json"
 MMLU_SIZE = 100
+
 INFERENCE_BATCH_SIZE = 4
-PROMPT = """Cuộc trò chuyện giữa con người và trợ lý AI.
+INFERENCE_PROMPT = """Cuộc trò chuyện giữa con người và trợ lý AI.
 [|Con người|] Lựa chọn một đáp án cho câu hỏi sau đây:
 {question}
 {choices}
@@ -206,7 +208,7 @@ class Inferencer:
     def generate(
         self,
         prompt,
-        log=True,
+        log=False,
         csv_path_to_save_logs="./prompt_log.csv",
         log_model_name="bloom_sft_3b",
     ):
@@ -219,7 +221,7 @@ class Inferencer:
         total_time = perf_counter() - start
         if log:
             self._log(log_model_name, text_output, total_time, csv_path_to_save_logs)
-        print(f"### Generated in {total_time:.6f} seconds ###\n")
+            print(f"### Generated in {total_time:.6f} seconds ###\n")
         return text_output
 
 
@@ -227,7 +229,7 @@ def load_arc(path, size):
     def mapper(x):
         choices = [x[t] for t in ["option_a", "option_b", "option_c", "option_d"]]
         return {
-            "input": PROMPT.format(
+            "input": INFERENCE_PROMPT.format(
                 question=x["instruction"],
                 choices="\n".join(
                     f"{i}. {c}" for i, c in zip(["A", "B", "C", "D"], choices)
@@ -250,7 +252,7 @@ def load_mmlu(path, size):
     def mapper(x):
         choices = [x[t] for t in ["option_a", "option_b", "option_c", "option_d"]]
         return {
-            "input": PROMPT.format(
+            "input": INFERENCE_PROMPT.format(
                 question=x["instruction"],
                 choices="\n".join(
                     f"{i}. {c}" for i, c in zip(["A", "B", "C", "D"], choices)
