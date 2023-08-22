@@ -329,7 +329,7 @@ inferencer.set_gen_config(GEN_CONFIG)
 def generate_func(prompts):
     results = [x[0]["generated_text"] for x in inferencer.pipeline(prompts)]
     indices = [res.find("[|AI|]") for res in results]
-    return [res[i + 7 : i + 8].strip() for i, res in zip(indices, results)]
+    return [res[i + 7 : i + 8].strip() if i != -1 else "" for i, res in zip(indices, results)]
 
 
 result = report(generate_func)
