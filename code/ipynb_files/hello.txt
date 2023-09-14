@@ -4,3 +4,9 @@ export CUDA_VISIBLE_DEVICES=X
 jupyter notebook --ip 0.0.0.0 --port 8888 --allow-root
 138.192:9005 
 138.189:9005
+
+
+Đối tác chiến lược toàn diện trong quan hệ
+Nguyễn Văn Nên
+Thuý Kiều có hai chị em
+Văn học dân gian Việt Nam có một số thể loại chính như truyện thơ,
